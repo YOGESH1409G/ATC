@@ -1,0 +1,10 @@
+# Build artifacts
+build/
+atc_simulator
+
+# IDE files
+.vscode/
+*.dSYM/
+
+# OS files
+.DS_Store
