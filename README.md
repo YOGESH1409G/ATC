@@ -6,6 +6,8 @@ A **C++ Object-Oriented** console-based simulation that models an air traffic co
 
 ## UML Class Diagram
 
+> **Standalone file:** [`docs/class_diagram.mmd`](docs/class_diagram.mmd) — open in [Mermaid Live Editor](https://mermaid.live) or render with `mmdc -i docs/class_diagram.mmd -o docs/class_diagram.svg`
+
 ```mermaid
 classDiagram
     direction TB
