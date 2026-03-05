@@ -3,10 +3,19 @@
 #include <thread>
 #include <chrono>
 
-// ─── Constructor ────────────────────────────────────────────────────────────
+// ─── Constructor (from dimensions) ──────────────────────────────────────────
 SimulationEngine::SimulationEngine(int width, int height, int maxSteps, double safeDistance)
     : airspace(width, height),
       controller(safeDistance),
+      maxSteps(maxSteps),
+      currentStep(0) {}
+
+// ─── Constructor (from pre-built objects) ───────────────────────────────────
+// Accepts an Airspace that already has aircraft added, plus Radar & Controller.
+SimulationEngine::SimulationEngine(Airspace airspace, Radar radar, Controller controller, int maxSteps)
+    : airspace(airspace),
+      radar(radar),
+      controller(controller),
       maxSteps(maxSteps),
       currentStep(0) {}
 

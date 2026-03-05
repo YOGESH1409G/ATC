@@ -123,19 +123,17 @@ make clean
 ### Configuration (in main.cpp)
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `AIRSPACE_WIDTH` | 30 | Grid width |
-| `AIRSPACE_HEIGHT` | 20 | Grid height |
+| `AIRSPACE_WIDTH` | 40 | Grid width |
+| `AIRSPACE_HEIGHT` | 40 | Grid height |
 | `MAX_STEPS` | 20 | Simulation duration |
 | `SAFE_DISTANCE` | 5.0 | Collision warning threshold |
 
 ### Sample Aircraft
-| ID | Start Position | Speed | Direction |
-|----|---------------|-------|-----------|
-| AA101 | (2, 3) | 2 | N |
-| BB202 | (25, 15) | 1 | S |
-| CC303 | (10, 10) | 1 | E |
-| DD404 | (15, 5) | 2 | N |
-| EE505 | (5, 18) | 1 | W |
+| ID | Start Position | Speed | Direction | Notes |
+|----|---------------|-------|-----------|-------|
+| A1 | (10, 10) | 1 | E | Heads toward A2 — collision scenario |
+| A2 | (20, 10) | 1 | W | Heads toward A1 — collision scenario |
+| A3 | (5, 30) | 1 | N | Independent — demonstrates boundary clamping |
 
 ---
 

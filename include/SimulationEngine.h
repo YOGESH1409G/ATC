@@ -29,9 +29,13 @@ private:
     int currentStep;        // Current step counter (1-based during run)
 
 public:
-    // ─── Constructor ────────────────────────────────────────────────────
-    // Initialises engine with airspace dimensions, step count, safe distance.
+    // ─── Constructors ───────────────────────────────────────────────────
+    // Build engine from scratch: creates Airspace, Radar, Controller internally.
     SimulationEngine(int width, int height, int maxSteps, double safeDistance = 5.0);
+
+    // Build engine from pre-configured objects (used when main.cpp creates
+    // Airspace, Radar, and Controller explicitly before starting the engine).
+    SimulationEngine(Airspace airspace, Radar radar, Controller controller, int maxSteps);
 
     // ─── Setup ──────────────────────────────────────────────────────────
     // Add an aircraft to the simulation before calling run().
