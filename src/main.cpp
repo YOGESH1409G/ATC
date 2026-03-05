@@ -4,7 +4,7 @@ int main() {
     // ─── Configuration ──────────────────────────────────────────────────
     const int AIRSPACE_WIDTH  = 30;
     const int AIRSPACE_HEIGHT = 20;
-    const int MAX_STEPS       = 10;
+    const int MAX_STEPS       = 20;
     const double SAFE_DISTANCE = 5.0;
 
     // ─── Create Simulation Engine ───────────────────────────────────────

@@ -16,6 +16,9 @@ void SimulationEngine::addAircraft(const Aircraft& aircraft) {
 }
 
 // ─── Run Full Simulation ────────────────────────────────────────────────────
+// Main entry point.  Runs the loop for maxSteps iterations.
+// Each step executes:  update positions → detect collisions → display radar.
+// A 500 ms delay is inserted between steps for console readability.
 void SimulationEngine::run() {
     printBanner();
 
@@ -25,16 +28,20 @@ void SimulationEngine::run() {
               << "  |  Safe Distance: " << controller.getMinSafeDistance()
               << "\n";
 
-    // Show initial state
+    // Show initial state before the loop begins
     std::cout << "\n  ─── INITIAL STATE ───────────────────────────────────\n";
     radar.displayAirspace(airspace);
     radar.printGrid(airspace);
 
-    // Main simulation loop
+    // ─── Main simulation loop (20 steps by default) ─────────────────────
+    // For each step:
+    //   1. Airspace::updateAircraftPositions()  — move all aircraft
+    //   2. Controller::checkCollisions()        — detect proximity violations
+    //   3. Radar::displayAirspace()             — print positions & grid
     for (currentStep = 1; currentStep <= maxSteps; ++currentStep) {
         step();
 
-        // Pause between steps for readability
+        // Delay between steps for readability (500 ms)
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
 
@@ -42,6 +49,10 @@ void SimulationEngine::run() {
 }
 
 // ─── Single Step ────────────────────────────────────────────────────────────
+// Executes one simulation time-step in three phases:
+//   1. updateAircraftPositions() — move every aircraft by its speed/direction
+//   2. checkCollisions()         — Euclidean distance check for all pairs
+//   3. displayAirspace()         — print status table + ASCII grid
 void SimulationEngine::step() {
     std::cout << "\n  ═══ STEP " << currentStep << " / " << maxSteps
               << " ═══════════════════════════════════════════\n";

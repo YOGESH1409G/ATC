@@ -125,7 +125,7 @@ make clean
 |-----------|---------|-------------|
 | `AIRSPACE_WIDTH` | 30 | Grid width |
 | `AIRSPACE_HEIGHT` | 20 | Grid height |
-| `MAX_STEPS` | 10 | Simulation duration |
+| `MAX_STEPS` | 20 | Simulation duration |
 | `SAFE_DISTANCE` | 5.0 | Collision warning threshold |
 
 ### Sample Aircraft
@@ -244,6 +244,53 @@ WARNING: Potential collision between Aircraft AA101 and BB202
 - Checks all unique pairs: O(n*(n-1)/2)
 - Stateless — operates on current airspace snapshot each step
 - Configurable threshold via `setMinSafeDistance()`
+
+---
+
+## Stage 6 — SimulationEngine (20-Step Loop with Delay)
+
+### Changes Made
+Enhanced the `SimulationEngine` class with full documentation, a **20-step** simulation loop, and a **500 ms** inter-step delay for console readability.
+
+### SimulationEngine Attributes (private)
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `airspace` | `Airspace` | The 2-D grid holding all active aircraft |
+| `radar` | `Radar` | Console display system (read-only observer) |
+| `controller` | `Controller` | Collision detection system |
+| `maxSteps` | `int` | Total number of simulation steps (default 20) |
+| `currentStep` | `int` | 1-based counter tracking the current step |
+
+### SimulationEngine Methods
+| Method | Return | Description |
+|--------|--------|-------------|
+| `SimulationEngine(w, h, steps, safeDist)` | — | Constructor, initialises all subsystems |
+| `addAircraft(aircraft)` | `void` | Registers an aircraft before the simulation starts |
+| `run()` | `void` | Main entry point — runs the full 20-step loop |
+| `step()` | `void` | Executes one step: update → detect → display |
+| `printBanner()` | `void` | Prints the welcome banner at simulation start |
+| `printSummary()` | `void` | Prints summary statistics at simulation end |
+
+### Simulation Loop (per step)
+```
+FOR currentStep = 1 TO maxSteps (20):
+  1. Airspace::updateAircraftPositions()   → move all aircraft
+  2. Controller::checkCollisions()         → Euclidean distance check
+  3. Radar::displayAirspace()              → print "Aircraft <ID> → (x,y)"
+     Radar::printGrid()                    → render ASCII grid
+  ── sleep 500 ms ──
+```
+
+### Delay Mechanism
+- Uses `std::this_thread::sleep_for(std::chrono::milliseconds(500))`
+- Provides a half-second pause between steps so the console output is readable
+- Requires `<thread>` and `<chrono>` headers
+
+### Design Principles
+- **Composition** — owns Airspace, Radar, Controller (no raw pointers)
+- **Orchestrator pattern** — coordinates subsystems without exposing internals
+- **Single entry point** — `run()` is the only method main() needs to call
+- **Testable** — `step()` is public and can be called independently for unit testing
 
 ---
 
