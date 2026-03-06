@@ -17,6 +17,8 @@
 9. [Build System & Tooling](#9-build-system--tooling)
 10. [Scenario-Based Questions](#10-scenario-based-questions)
 11. [How to Present This Project in an Interview](#11-how-to-present-this-project)
+12. [Automatic Collision Avoidance — Q&A](#12-automatic-collision-avoidance--qa)
+13. [ANSI Color Visualization — Q&A](#13-ansi-color-visualization--qa)
 
 ---
 
@@ -27,22 +29,28 @@ A **C++17 console-based Air Traffic Control Simulator** that models aircraft mov
 - Aircraft with position, speed, and direction
 - A bounded airspace with restricted weather zones
 - Real-time collision detection using Euclidean distance
-- ASCII radar display with grid rendering
+- **Automatic collision avoidance** — lower-priority aircraft rerouted 90° right
+- **ANSI color-coded** radar display (green=safe, red=danger, yellow=caution, blue=weather zones)
+- Animated console with clear-screen, progress bar, and summary dashboard
 - A simulation engine running a 20-step time-loop
 
 ### Architecture (memorise this!)
 ```
 SimulationEngine (Orchestrator)
     ├── owns Airspace       → manages Aircraft[] + WeatherZone[]
-    ├── owns Radar          → read-only display
-    └── owns Controller     → collision detection
+    ├── owns Radar          → color-coded display (reads dangerIds)
+    └── owns Controller     → collision detection + auto-avoidance
 ```
 
 ### The Simulation Loop (per step)
 ```
-1. Airspace::updateAircraftPositions()   → move + weather zone avoidance + boundary clamping
-2. Controller::checkCollisions()         → Euclidean distance on all pairs
-3. Radar::displayAirspace()              → print table + ASCII grid
+1. system("clear")                               → animated screen refresh
+2. Print progress bar                             → [########-----------] 40%
+3. Airspace::updateAircraftPositions()             → move + weather zone avoidance + boundary clamping
+4. Controller::resolveCollisions()                 → detect collisions + auto-reroute (turn 90° right)
+5. Build danger set (IDs within safe distance)     → std::set<string>
+6. Radar::displayAirspace(airspace, dangerIds)     → color-coded aircraft list
+7. Radar::printGrid(airspace, dangerIds)           → color-coded ASCII grid + legend
 ── sleep 500ms ──
 ```
 
@@ -462,7 +470,13 @@ for each aircraft:
 
 ### 5.3 Radar Class
 
-**Role:** Read-only display — never modifies any data.
+**Role:** Color-coded read-only display — never modifies any data.
+
+**Key features:**
+- Accepts `std::set<std::string> dangerIds` to color-code aircraft by threat level
+- Uses `isNearWeatherZone()` helper (2-cell margin) for caution tagging
+- Grid cells are colored: green=safe, red=danger, yellow=caution, blue=weather zone, dim=empty
+- Color legend printed below the grid
 
 **Key implementation detail — Y-axis flip in `printGrid()`:**
 ```cpp
@@ -484,6 +498,10 @@ grid[h - 1 - gy][gx] = marker;
 
 This makes the grid visually correct: north is up, south is down.
 
+**Follow-up Q: "How does the color-coding work in the grid?"**
+
+**Answer:** I maintain a parallel `colorMap` grid alongside the character grid. Each cell gets a color type: 0=empty (dim), 1=weather zone (blue), 2=safe aircraft (green), 3=danger (red), 4=caution/near weather zone (yellow). The `dangerIds` set — built by `buildDangerSet()` in SimulationEngine — identifies aircraft within safe distance. The `isNearWeatherZone()` helper flags aircraft within 2 cells of any zone boundary. When rendering, a `switch` on the color type selects the ANSI escape code.
+
 **Follow-up Q: "Why is Radar stateless — no member variables at all?"**
 
 **Answer:** Radar only needs to display the *current* state of the airspace. It doesn't need to remember anything between calls. By being stateless:
@@ -496,25 +514,38 @@ This makes the grid visually correct: north is up, south is down.
 
 ### 5.4 Controller Class
 
-**Role:** Collision detection using Euclidean distance.
+**Role:** Collision detection **and automatic avoidance** using Euclidean distance.
 
-**Key algorithm:**
+**Key algorithm (resolveCollisions):**
 ```cpp
 for (i = 0; i < n; ++i)
     for (j = i+1; j < n; ++j)        // j starts at i+1 to avoid duplicates
-        if (distance(i, j) < safe)
-            warn();
+        if (distance(i, j) < safe) {
+            warn();                   // red warning
+            turnRight90(list[j]);     // reroute lower-priority aircraft
+            ++totalAvoidances;        // track across simulation
+        }
 ```
 
 ---
 
 #### Interviewer Questions:
 
-**Q15: "Explain your collision detection algorithm and its time complexity."**
+**Q15: "Explain your collision detection and avoidance algorithm."**
 
-**Answer:** I check every unique pair of aircraft. The outer loop goes from 0 to n-1, the inner loop goes from i+1 to n-1. This gives me $\frac{n(n-1)}{2}$ comparisons — that's $O(n^2)$. For each pair, I compute the Euclidean distance: $d = \sqrt{(x_2-x_1)^2 + (y_2-y_1)^2}$. If the distance is less than `minSafeDistance` (5.0 units), I print a warning.
+**Answer:** I check every unique pair of aircraft. The outer loop goes from 0 to n-1, the inner loop goes from i+1 to n-1. This gives me $\frac{n(n-1)}{2}$ comparisons — that's $O(n^2)$. For each pair, I compute the Euclidean distance: $d = \sqrt{(x_2-x_1)^2 + (y_2-y_1)^2}$. If the distance is less than `minSafeDistance` (5.0 units), I:
+1. Print a colour-coded **red warning**
+2. **Reroute** the lower-priority aircraft (the one with the higher index) by turning it **90° right** (N→E, E→S, S→W, W→N)
+3. Print a **yellow rerouting** message
+4. Increment `totalAvoidances` for the final summary
+
+The `checkCollisions()` method is the read-only version (detection only), while `resolveCollisions()` does both detection **and** avoidance.
 
 Starting the inner loop at `j = i + 1` is critical — it ensures I check A1-A2 but not A2-A1 (same pair). It also ensures I never check A1-A1 (same aircraft).
+
+**Follow-up Q: "Why turn 90° right instead of reversing direction?"**
+
+**Answer:** Reversing (180°) would send the aircraft back the way it came, which could create oscillating collisions with other aircraft behind it. A 90° turn moves the aircraft **perpendicular** to the collision course, separating the paths laterally. In real ATC, this is similar to a TCAS Resolution Advisory (RA) that commands a climb or descent — a change perpendicular to the horizontal conflict.
 
 **Follow-up Q: "How would you optimise this for 10,000 aircraft?"**
 
@@ -693,20 +724,24 @@ Since `step()` is public and classes are loosely coupled, each class can be test
 **Answer:**
 1. `main()` creates an `Airspace(40, 40)` — empty 40×40 grid
 2. Adds 2 weather zones: Storm at (14,8) size 5×5, Fog at (3,33) size 4×4
-3. Creates 3 Aircraft objects: A1 at (10,10) East, A2 at (20,10) West, A3 at (5,30) North
-4. Adds all 3 to Airspace via `addAircraft()`
+3. Creates 5 Aircraft objects: A1 at (10,10) East, A2 at (20,10) West, A3 at (5,30) North, A4 at (10,20) East, A5 at (14,20) West
+4. Adds all 5 to Airspace via `addAircraft()`
 5. Creates Radar (stateless) and Controller (safe distance = 5.0)
 6. Creates SimulationEngine by passing the pre-built objects
 7. Calls `engine.run()` which:
-   - Prints banner
-   - Shows initial state (radar display + grid)
-   - Runs 20 steps: each step → update positions → check collisions → display → sleep 500ms
-   - Prints summary
+   - Clears screen, prints color banner (v2.0)
+   - Shows initial state (color-coded radar display + grid)
+   - Waits 2 seconds
+   - Runs 20 steps: each step → clear screen → progress bar → update positions → resolve collisions → build danger set → color display → sleep 500ms
+   - Prints colored summary dashboard
 
 During the simulation:
 - A1 (East) and A2 (West) converge on row y=10 but hit the Storm zone first → reverse
 - A3 (North) hits the Fog zone around y=33 → reverses to South
-- Collision warnings fire when any two aircraft get closer than 5.0 units
+- A4 (East) and A5 (West) converge on row y=20 → A5 is automatically rerouted 90° right
+- Aircraft near weather zones are shown in **yellow** (CAUTION)
+- Aircraft in collision range are shown in **red** (DANGER)
+- Final summary shows **Collisions Avoided: 10**
 
 ---
 
@@ -782,21 +817,71 @@ Airspace would store `std::vector<std::unique_ptr<Aircraft>>` instead of `std::v
 ## 11. How to Present This Project
 
 ### 30-Second Elevator Pitch
-> "I built a C++ Air Traffic Control Simulator using object-oriented design. It has 6 classes — Aircraft, Airspace with weather zones, Radar display, collision detection Controller, and a SimulationEngine that orchestrates a 20-step time-loop. I used composition over inheritance, SRP, const correctness, STL containers, and the remove-erase idiom. The collision algorithm uses Euclidean distance with O(n²) pairwise checking, and aircraft automatically reverse direction when they encounter restricted weather zones."
+> "I built a C++ Air Traffic Control Simulator using object-oriented design. It has 6 classes — Aircraft, Airspace with weather zones, color-coded Radar display, collision detection **and avoidance** Controller, and a SimulationEngine with animated console output. I used composition over inheritance, SRP, const correctness, STL containers, and the remove-erase idiom. The collision algorithm uses Euclidean distance with O(n²) pairwise checking — when aircraft are too close, the lower-priority one is **automatically rerouted 90° right**. Aircraft near weather zones get yellow caution warnings, and the entire output is **ANSI color-coded** with a progress bar and summary dashboard."
 
 ### Key Technical Points to Mention
 1. **OOP** — Encapsulation, Composition, SRP, Abstraction
 2. **C++17** — const correctness, member initialiser lists, auto, range-based for, structured bindings, aggregate initialisation
-3. **STL** — vector, pair, remove_if with lambdas, algorithm header
-4. **Algorithms** — Euclidean distance collision detection O(n²), rectangular containment check, boundary clamping
+3. **STL** — vector, pair, set, remove_if with lambdas, algorithm header
+4. **Algorithms** — Euclidean distance collision detection O(n²), rectangular containment check, boundary clamping, 90° right-turn avoidance
 5. **Design** — Composition over inheritance, Observer pattern, Strategy-ready architecture
-6. **Build** — Makefile with separate compilation, g++ with strict warnings
+6. **Visualization** — ANSI escape codes (AnsiColors.h with `clr::` namespace), danger set tracking with `std::set<std::string>`, animated clear-screen + progress bar
+7. **Build** — Makefile with separate compilation, g++ with strict warnings
 
 ### Questions YOU Should Ask Back
 If the interviewer asks "any questions?", these show depth:
 - "In production ATC systems, is collision detection event-driven or polling-based?"
 - "What data structures do you use for spatial queries with large numbers of entities?"
 - "Do you prefer composition or inheritance for entity systems in your codebase?"
+- "How do real TCAS systems decide between climb and descend resolution advisories?"
+
+---
+
+## 12. Automatic Collision Avoidance — Q&A
+
+#### Interviewer Questions:
+
+**Q28: "How does your automatic collision avoidance work?"**
+
+**Answer:** In `Controller::resolveCollisions()`, I check every unique aircraft pair using the same O(n²) Euclidean distance algorithm. When a pair is within `minSafeDistance`, instead of just warning, I **reroute the lower-priority aircraft** — the one with the higher index `j` — by turning it 90° right. The mapping is: N→E, E→S, S→W, W→N. This ensures the avoidance is deterministic and repeatable. I also increment a `totalAvoidances` counter that's displayed in the final summary dashboard.
+
+**Follow-up Q: "Why is the higher-index aircraft rerouted, not the lower?"**
+
+**Answer:** In my design, aircraft registered earlier (lower index) have implicit priority — like a first-come-first-served queue. In production ATC, priority is typically based on emergency status, fuel level, or aircraft type. My approach is simple but extensible — I could add an explicit `priority` field to `Aircraft` and reroute the one with lower priority instead.
+
+**Follow-up Q: "What happens if both aircraft need to be rerouted?"**
+
+**Answer:** Currently, only one is rerouted per pair per step. If after the reroute they're still too close on the next step, the avoidance triggers again. This iterative approach works because 90° turns quickly separate converging paths. In a more sophisticated system, I'd implement a cooperative avoidance protocol where both aircraft receive complementary manoeuvres (like TCAS — one climbs, one descends).
+
+**Follow-up Q: "Could the 90° turn send an aircraft into a weather zone?"**
+
+**Answer:** Yes, that's possible. The avoidance happens in `resolveCollisions()` (step 4 of the loop), while weather zone avoidance happens in `updateAircraftPositions()` (step 3). So on the *next* step, if the rerouted aircraft enters a weather zone, the Airspace will revert + reverse it. The system is self-correcting across steps, though not optimal within a single step. A production fix would be to check the resulting path before committing the reroute.
+
+---
+
+## 13. ANSI Color Visualization — Q&A
+
+#### Interviewer Questions:
+
+**Q29: "How did you implement the color-coded console output?"**
+
+**Answer:** I created an `AnsiColors.h` header with a `clr::` namespace containing `constexpr const char*` constants for common ANSI escape sequences (e.g., `"\033[1;31m"` for bold red). Each output statement wraps the text with the appropriate color and always appends `clr::RESET` afterwards. The Radar methods accept a `std::set<std::string> dangerIds` parameter — built by the engine each step — to determine which aircraft are in danger. A helper `isNearWeatherZone()` checks if an aircraft is within 2 cells of any weather zone boundary for caution tagging.
+
+**Follow-up Q: "Why use `constexpr const char*` instead of `std::string`?"**
+
+**Answer:** ANSI escape codes are compile-time constants that never change. `constexpr const char*` stores them as string literals with zero runtime overhead — no heap allocation, no constructor calls. Using `std::string` would allocate heap memory at program start for each color code, which is wasteful for immutable constant data. The `constexpr` also enables the compiler to inline the pointer values directly.
+
+**Follow-up Q: "How does the danger set work?"**
+
+**Answer:** `buildDangerSet()` is a static helper in `SimulationEngine.cpp`. Each step, after collision avoidance runs, it iterates all aircraft pairs and checks if any are within `minSafeDistance`. Both aircraft IDs are inserted into a `std::set<std::string>`. This set is then passed to `Radar::displayAirspace()` and `Radar::printGrid()`. If an aircraft's ID is in the set → red. If it's near a weather zone → yellow. Otherwise → green. The set uses `std::set::count()` for O(log n) lookup.
+
+**Follow-up Q: "What happens on terminals that don't support ANSI colors?"**
+
+**Answer:** The escape codes would appear as raw text (e.g., `[1;31m`), making output unreadable. To handle this gracefully, I could: (1) check the `TERM` environment variable, (2) use `isatty(STDOUT_FILENO)` to detect if stdout is a terminal, or (3) add a `--no-color` command-line flag that replaces all `clr::` values with empty strings. For this educational project, ANSI support is assumed since it works in virtually all modern terminals.
+
+**Q30: "Explain the progress bar implementation."**
+
+**Answer:** Each step, I compute the fill percentage: `filled = (currentStep * barWidth) / maxSteps`. I then print `barWidth` characters: `#` for filled positions and `-` (dimmed) for empty positions. The percentage `(currentStep * 100 / maxSteps)` is appended. Combined with `system("clear")` at the start of each step, this creates an animated progress bar that updates in place. The 500ms delay between steps makes the animation visible.
 
 ---
 

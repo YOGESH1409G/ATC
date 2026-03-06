@@ -57,18 +57,22 @@ classDiagram
     }
 
     class Radar {
-        +displayAirspace(airspace) void
-        +printGrid(airspace) void
+        +displayAirspace(airspace, dangerIds) void
+        +printGrid(airspace, dangerIds) void
     }
 
     class Controller {
         -double minSafeDistance
+        -int totalAvoidances
         -computeDistance(a, b) double
         -raiseWarning(a, b, dist) void
+        -turnRight90(dir)$ string
         +Controller(minSafeDistance)
         +checkCollisions(airspace) int
+        +resolveCollisions(airspace) int
         +getMinSafeDistance() double
         +setMinSafeDistance(d) void
+        +getTotalAvoidances() int
     }
 
     class SimulationEngine {

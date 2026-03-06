@@ -1,6 +1,6 @@
 # Air Traffic Control Simulator
 
-A **C++ Object-Oriented** console-based simulation that models an air traffic control system. Aircraft move across a 2D airspace grid, a radar displays their positions, and a controller detects potential collisions in real time.
+A **C++ Object-Oriented** console-based simulation that models an air traffic control system. Aircraft move across a 2D airspace grid, a radar displays their positions with **ANSI color-coded** output, a controller detects and **automatically avoids** potential collisions, and restricted weather zones force aircraft to reroute — all animated in real time.
 
 ---
 
@@ -65,18 +65,22 @@ classDiagram
     }
 
     class Radar {
-        +displayAirspace(airspace) void
-        +printGrid(airspace) void
+        +displayAirspace(airspace, dangerIds) void
+        +printGrid(airspace, dangerIds) void
     }
 
     class Controller {
         -double minSafeDistance
+        -int totalAvoidances
         -computeDistance(a, b) double
         -raiseWarning(a, b, dist) void
+        -turnRight90(dir)$ string
         +Controller(minSafeDistance)
         +checkCollisions(airspace) int
+        +resolveCollisions(airspace) int
         +getMinSafeDistance() double
         +setMinSafeDistance(d) void
+        +getTotalAvoidances() int
     }
 
     class SimulationEngine {
@@ -179,16 +183,21 @@ AIR TRAFIC CONTROLLER/
 ├── include/
 │   ├── Aircraft.h            # Aircraft class declaration
 │   ├── Airspace.h            # Airspace manager declaration
+│   ├── AnsiColors.h          # ANSI escape code constants (clr:: namespace)
 │   ├── Radar.h               # Radar display declaration
-│   ├── Controller.h          # Collision detection declaration
-│   └── SimulationEngine.h    # Simulation orchestrator declaration
+│   ├── Controller.h          # Collision detection & avoidance declaration
+│   ├── SimulationEngine.h    # Simulation orchestrator declaration
+│   └── WeatherZone.h         # WeatherZone struct
 ├── src/
 │   ├── Aircraft.cpp          # Aircraft implementation
-│   ├── Airspace.cpp          # Airspace implementation
-│   ├── Radar.cpp             # Radar implementation
-│   ├── Controller.cpp        # Controller implementation
-│   ├── SimulationEngine.cpp  # Simulation engine implementation
+│   ├── Airspace.cpp          # Airspace implementation (weather zone avoidance)
+│   ├── Radar.cpp             # Color-coded radar display implementation
+│   ├── Controller.cpp        # Collision detection & auto-avoidance
+│   ├── SimulationEngine.cpp  # Animated simulation engine with progress bar
 │   └── main.cpp              # Entry point with sample aircraft
+├── docs/
+│   ├── class_diagram.mmd     # UML class diagram (Mermaid)
+│   └── INTERVIEW_PREP.md     # Interview preparation guide
 ├── Makefile                  # Build automation
 └── README.md                 # This file
 ```
@@ -198,21 +207,27 @@ AIR TRAFIC CONTROLLER/
 | Class | Responsibility |
 |-------|---------------|
 | `Aircraft` | Represents a single aircraft with position, speed, direction. Moves itself each step. |
-| `Airspace` | Manages the 2D grid boundaries and all active aircraft. Updates positions, enforces bounds. |
-| `Radar` | Read-only observer. Prints formatted aircraft table and ASCII grid to console. |
-| `Controller` | Safety system. Scans all aircraft pairs, raises warnings when distance < safe threshold. |
-| `SimulationEngine` | Orchestrator. Owns Airspace, Radar, Controller. Runs the main time-step loop. |
+| `Airspace` | Manages the 2D grid, all aircraft, weather zones. Enforces boundaries and zone avoidance. |
+| `Radar` | Color-coded observer. Prints ANSI-colored aircraft table and ASCII grid with legend. |
+| `Controller` | Safety system. Detects collisions AND auto-reroutes lower-priority aircraft (turn 90°). |
+| `SimulationEngine` | Orchestrator. Animated clear-screen loop, progress bar, banner, summary dashboard. |
 
 ### Simulation Workflow
 ```
 main()
   └─► SimulationEngine::run()
+        ├── Display banner (v2.0, ANSI colored)
         ├── Display initial state
+        ├── Wait 2 seconds
         └── FOR each step (1 → maxSteps):
-              ├── 1. Airspace::updateAircraftPositions()  →  move + clamp bounds
-              ├── 2. Controller::checkCollisions()  →  warn if distance < threshold
-              ├── 3. Radar::display()  →  print status table
-              └── 4. Radar::printGrid()  →  print ASCII grid
+              ├── system("clear")  →  animated screen refresh
+              ├── Print progress bar  →  [████████░░░░] 40%
+              ├── 1. Airspace::updateAircraftPositions()  →  move + weather zone avoidance + clamp
+              ├── 2. Controller::resolveCollisions()  →  detect + auto-reroute (turn 90° right)
+              ├── 3. Build danger set  →  IDs of aircraft within safe distance
+              ├── 4. Radar::displayAirspace(dangerIds)  →  color-coded status table
+              └── 5. Radar::printGrid(dangerIds)  →  color-coded ASCII grid + legend
+        └── Print summary dashboard (colored stats)
 ```
 
 ### OOP Concepts Used
@@ -247,9 +262,11 @@ make clean
 ### Sample Aircraft
 | ID | Start Position | Speed | Direction | Notes |
 |----|---------------|-------|-----------|-------|
-| A1 | (10, 10) | 1 | E | Heads toward A2 — collision scenario |
-| A2 | (20, 10) | 1 | W | Heads toward A1 — collision scenario |
-| A3 | (5, 30) | 1 | N | Independent — demonstrates boundary clamping |
+| A1 | (10, 10) | 1 | E | Hits Storm zone → reverses |
+| A2 | (20, 10) | 1 | W | Hits Storm zone → reverses |
+| A3 | (5, 30) | 1 | N | Hits Fog zone → reverses |
+| A4 | (10, 20) | 1 | E | Collision avoidance demo (converges with A5) |
+| A5 | (14, 20) | 1 | W | Gets rerouted (lower priority) → turns 90° right |
 
 ---
 
@@ -456,4 +473,88 @@ for each aircraft:
 
 ---
 
-> **Next stages** will add more features on top of this core engine.
+## Automatic Collision Avoidance
+
+### Overview
+When two aircraft are on a **collision course** (distance < safe threshold), the Controller automatically **reroutes the lower-priority aircraft** by turning it 90° to the right.
+
+### How It Works
+```
+for each unique pair (i, j):
+  if distance(i, j) < minSafeDistance:
+    1. Print ⚠ WARNING (red)
+    2. Turn aircraft [j] 90° right  (N→E, E→S, S→W, W→N)
+    3. Print [ATC] Rerouting message (yellow)
+    4. Increment totalAvoidances counter
+```
+
+### New Controller Methods
+| Method | Return | Description |
+|--------|--------|-------------|
+| `resolveCollisions(airspace)` | `int` | Detects AND avoids collisions (active intervention) |
+| `getTotalAvoidances()` | `int` | Returns total avoidances across the entire simulation |
+| `turnRight90(dir)` | `string` | Static helper — rotates compass heading 90° clockwise |
+
+### Priority Rule
+Between aircraft `i` and `j`, the one with the **higher index** (later in the list) is rerouted. This simulates a priority system where earlier-registered aircraft have priority.
+
+### Demo Result
+With A4 (10,20,E) and A5 (14,20,W) converging on row y=20:
+- Steps 1–8: A4 and A5 approach, A5 is rerouted multiple times
+- Final summary reports **Collisions Avoided: 10** across the 20-step simulation
+
+---
+
+## ANSI Color-Coded Console Visualization
+
+### Overview
+The entire console output is now **color-coded** using ANSI escape sequences for a professional, readable display.
+
+### Color Scheme
+| Color | Meaning | Where Used |
+|-------|---------|------------|
+| **Green** (bold) | Safe aircraft | Aircraft list `[SAFE]`, grid markers, summary stats |
+| **Red** (bold) | Danger — near collision | Aircraft list `[DANGER]`, grid markers, warnings |
+| **Yellow** (bold) | Caution — near weather zone | Aircraft list `[CAUTION]`, grid markers, rerouting msgs |
+| **Blue** (bold) | Weather zone | Zone info, `#` markers on grid, zone addition msgs |
+| **Cyan** (bold) | UI chrome | Borders, progress bar, step counter, banner frame |
+| **White** (bold) | Headings | Banner title, summary labels |
+| **Dim** | Background elements | Grid dots, borders, totals |
+
+### AnsiColors.h (`clr::` namespace)
+```cpp
+namespace clr {
+    constexpr const char* RESET      = "\033[0m";
+    constexpr const char* RED        = "\033[31m";
+    constexpr const char* GREEN      = "\033[32m";
+    constexpr const char* YELLOW     = "\033[33m";
+    constexpr const char* BLUE       = "\033[34m";
+    constexpr const char* CYAN       = "\033[36m";
+    constexpr const char* WHITE      = "\033[37m";
+    constexpr const char* BOLD_RED   = "\033[1;31m";
+    // ... full set of bold variants + DIM
+}
+```
+
+### Animated Features
+- **Clear screen** between steps (`system("clear")`) for animation effect
+- **Progress bar** showing simulation progress: `Step 5 / 20  [##########------------------------------]  25%`
+- **2-second delay** before simulation starts
+- **500ms** between steps
+
+### Radar Display Enhancements
+- **Aircraft list** — each aircraft shows colored status tag: `[SAFE]`, `[DANGER]`, `[CAUTION]`
+- **ASCII grid** — each cell is colored: green=safe aircraft, red=danger, yellow=caution, blue=weather zone, dim=empty
+- **Color legend** — printed below the grid: `* Safe  * Danger  * Caution  # Weather Zone`
+
+### Danger Detection (`isNearWeatherZone`)
+Aircraft within **2 cells** of any weather zone boundary are tagged `[CAUTION]` (yellow) even before they enter the zone.
+
+### Summary Dashboard
+At simulation end, a full-width colored dashboard shows:
+- Total Steps Run (cyan)
+- Aircraft Tracked (green)
+- Weather Zones (blue)
+- Collisions Avoided (red if > 0, green if 0)
+
+---
